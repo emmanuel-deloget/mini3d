@@ -1,94 +1,34 @@
 //=====================================================================
-// 
+//
 // mini3d.c - Mini Software Render All-In-One
 //
 // build:
 //   mingw: gcc -O3 mini3d.c -o mini3d.exe -lgdi32
-//   msvc:  cl -O2 -nologo mini3d.c 
+//   msvc:  cl -O2 -nologo mini3d.c
 //
 // history:
 //   2007.7.01  skywind  create this file as a tutorial
 //   2007.7.02  skywind  implementate texture and color render
 //   2008.3.15  skywind  fixed a trapezoid issue
 //   2015.8.09  skywind  rewrite with more comment
-//   2015.8.12  skywind  adjust interfaces for clearity 
-// 
+//   2015.8.12  skywind  adjust interfaces for clearity
+//
 //=====================================================================
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 #include <math.h>
 #include <assert.h>
 
-#include <windows.h>
-#include <tchar.h>
-
-typedef unsigned int IUINT32;
-
-//=====================================================================
-// 数学库：此部分应该不用详解，熟悉 D3D 矩阵变换即可
-//=====================================================================
-typedef struct { float m[4][4]; } matrix_t;
-typedef struct { float x, y, z, w; } vector_t;
-typedef vector_t point_t;
-
-int CMID(int x, int min, int max) { return (x < min)? min : ((x > max)? max : x); }
-
-// 计算插值：t 为 [0, 1] 之间的数值
-float interp(float x1, float x2, float t) { return x1 + (x2 - x1) * t; }
-
-// | v |
-float vector_length(const vector_t *v) {
-	float sq = v->x * v->x + v->y * v->y + v->z * v->z;
-	return (float)sqrt(sq);
-}
-
-// z = x + y
-void vector_add(vector_t *z, const vector_t *x, const vector_t *y) {
-	z->x = x->x + y->x;
-	z->y = x->y + y->y;
-	z->z = x->z + y->z;
-	z->w = 1.0;
-}
-
-// z = x - y
-void vector_sub(vector_t *z, const vector_t *x, const vector_t *y) {
-	z->x = x->x - y->x;
-	z->y = x->y - y->y;
-	z->z = x->z - y->z;
-	z->w = 1.0;
-}
-
-// 矢量点乘
-float vector_dotproduct(const vector_t *x, const vector_t *y) {
-	return x->x * y->x + x->y * y->y + x->z * y->z;
-}
-
-// 矢量叉乘
-void vector_crossproduct(vector_t *z, const vector_t *x, const vector_t *y) {
-	float m1, m2, m3;
-	m1 = x->y * y->z - x->z * y->y;
-	m2 = x->z * y->x - x->x * y->z;
-	m3 = x->x * y->y - x->y * y->x;
-	z->x = m1;
-	z->y = m2;
-	z->z = m3;
-	z->w = 1.0f;
-}
-
-// 矢量插值，t取值 [0, 1]
-void vector_interp(vector_t *z, const vector_t *x1, const vector_t *x2, float t) {
-	z->x = interp(x1->x, x2->x, t);
-	z->y = interp(x1->y, x2->y, t);
-	z->z = interp(x1->z, x2->z, t);
-	z->w = 1.0f;
-}
+#include "mini3d.h"
 
 // 矢量归一化
 void vector_normalize(vector_t *v) {
 	float length = vector_length(v);
 	if (length != 0.0f) {
 		float inv = 1.0f / length;
-		v->x *= inv; 
+		v->x *= inv;
 		v->y *= inv;
 		v->z *= inv;
 	}
@@ -131,7 +71,7 @@ void matrix_mul(matrix_t *c, const matrix_t *a, const matrix_t *b) {
 void matrix_scale(matrix_t *c, const matrix_t *a, float f) {
 	int i, j;
 	for (i = 0; i < 4; i++) {
-		for (j = 0; j < 4; j++) 
+		for (j = 0; j < 4; j++)
 			c->m[i][j] = a->m[i][j] * f;
 	}
 }
@@ -146,7 +86,7 @@ void matrix_apply(vector_t *y, const vector_t *x, const matrix_t *m) {
 }
 
 void matrix_set_identity(matrix_t *m) {
-	m->m[0][0] = m->m[1][1] = m->m[2][2] = m->m[3][3] = 1.0f; 
+	m->m[0][0] = m->m[1][1] = m->m[2][2] = m->m[3][3] = 1.0f;
 	m->m[0][1] = m->m[0][2] = m->m[0][3] = 0.0f;
 	m->m[1][0] = m->m[1][2] = m->m[1][3] = 0.0f;
 	m->m[2][0] = m->m[2][1] = m->m[2][3] = 0.0f;
@@ -196,7 +136,7 @@ void matrix_set_rotate(matrix_t *m, float x, float y, float z, float theta) {
 	m->m[1][2] = 2 * y * z + 2 * w * x;
 	m->m[2][2] = 1 - 2 * x * x - 2 * y * y;
 	m->m[0][3] = m->m[1][3] = m->m[2][3] = 0.0f;
-	m->m[3][0] = m->m[3][1] = m->m[3][2] = 0.0f;	
+	m->m[3][0] = m->m[3][1] = m->m[3][2] = 0.0f;
 	m->m[3][3] = 1.0f;
 }
 
@@ -224,7 +164,7 @@ void matrix_set_lookat(matrix_t *m, const vector_t *eye, const vector_t *at, con
 	m->m[1][2] = zaxis.y;
 	m->m[2][2] = zaxis.z;
 	m->m[3][2] = -vector_dotproduct(&zaxis, eye);
-	
+
 	m->m[0][3] = m->m[1][3] = m->m[2][3] = 0.0f;
 	m->m[3][3] = 1.0f;
 }
@@ -244,15 +184,6 @@ void matrix_set_perspective(matrix_t *m, float fovy, float aspect, float zn, flo
 //=====================================================================
 // 坐标变换
 //=====================================================================
-typedef struct { 
-	matrix_t world;         // 世界坐标变换
-	matrix_t view;          // 摄影机坐标变换
-	matrix_t projection;    // 投影变换
-	matrix_t transform;     // transform = world * view * projection
-	float w, h;             // 屏幕大小
-}	transform_t;
-
-
 // 矩阵更新，计算 transform = world * view * projection
 void transform_update(transform_t *ts) {
 	matrix_t m;
@@ -269,11 +200,6 @@ void transform_init(transform_t *ts, int width, int height) {
 	ts->w = (float)width;
 	ts->h = (float)height;
 	transform_update(ts);
-}
-
-// 将矢量 x 进行 project 
-void transform_apply(const transform_t *ts, vector_t *y, const vector_t *x) {
-	matrix_apply(y, x, &ts->transform);
 }
 
 // backface culling in view space
@@ -311,15 +237,6 @@ void transform_homogenize(const transform_t *ts, vector_t *y, const vector_t *x)
 //=====================================================================
 // 几何计算：顶点、扫描线、边缘、矩形、步长计算
 //=====================================================================
-typedef struct { float r, g, b; } color_t;
-typedef struct { float u, v; } texcoord_t;
-typedef struct { point_t pos; texcoord_t tc; color_t color; float rhw; } vertex_t;
-
-typedef struct { vertex_t v, v1, v2; } edge_t;
-typedef struct { float top, bottom; edge_t left, right; } trapezoid_t;
-typedef struct { vertex_t v, step; int x, y, w; } scanline_t;
-
-
 void vertex_rhw_init(vertex_t *v) {
 	float rhw = 1.0f / v->pos.w;
 	v->rhw = rhw;
@@ -368,7 +285,7 @@ void vertex_add(vertex_t *y, const vertex_t *x) {
 }
 
 // 根据三角形生成 0-2 个梯形，并且返回合法梯形的数量
-int trapezoid_init_triangle(trapezoid_t *trap, const vertex_t *p1, 
+int trapezoid_init_triangle(trapezoid_t *trap, const vertex_t *p1,
 	const vertex_t *p2, const vertex_t *p3) {
 	const vertex_t *p;
 	float k, x;
@@ -457,27 +374,6 @@ void trapezoid_init_scan_line(const trapezoid_t *trap, scanline_t *scanline, int
 //=====================================================================
 // 渲染设备
 //=====================================================================
-typedef struct {
-	transform_t transform;      // 坐标变换器
-	int width;                  // 窗口宽度
-	int height;                 // 窗口高度
-	IUINT32 **framebuffer;      // 像素缓存：framebuffer[y] 代表第 y行
-	float **zbuffer;            // 深度缓存：zbuffer[y] 为第 y行指针
-	IUINT32 **texture;          // 纹理：同样是每行索引
-	int tex_width;              // 纹理宽度
-	int tex_height;             // 纹理高度
-	float max_u;                // 纹理最大宽度：tex_width - 1
-	float max_v;                // 纹理最大高度：tex_height - 1
-	int render_state;           // 渲染状态
-	IUINT32 background;         // 背景颜色
-	IUINT32 foreground;         // 线框颜色
-}	device_t;
-
-#define RENDER_STATE_WIREFRAME      1		// 渲染线框
-#define RENDER_STATE_TEXTURE        2		// 渲染纹理
-#define RENDER_STATE_COLOR          4		// 渲染颜色
-#define RENDER_STATE_CCW_CULLING    8		// cull backfaces
-
 // 设备初始化，fb为外部帧缓存，非 NULL 将引用外部帧缓存（每行 4字节对齐）
 void device_init(device_t *device, int width, int height, void *fb) {
 	int need = sizeof(void*) * (height * 2 + 1024) + width * height * 8;
@@ -485,21 +381,21 @@ void device_init(device_t *device, int width, int height, void *fb) {
 	char *framebuf, *zbuf;
 	int j;
 	assert(ptr);
-	device->framebuffer = (IUINT32**)ptr;
+	device->framebuffer = (uint32_t**)ptr;
 	device->zbuffer = (float**)(ptr + sizeof(void*) * height);
 	ptr += sizeof(void*) * height * 2;
-	device->texture = (IUINT32**)ptr;
+	device->texture = (uint32_t **)ptr;
 	ptr += sizeof(void*) * 1024;
 	framebuf = (char*)ptr;
 	zbuf = (char*)ptr + width * height * 4;
 	ptr += width * height * 8;
 	if (fb != NULL) framebuf = (char*)fb;
 	for (j = 0; j < height; j++) {
-		device->framebuffer[j] = (IUINT32*)(framebuf + width * 4 * j);
+		device->framebuffer[j] = (uint32_t*)(framebuf + width * 4 * j);
 		device->zbuffer[j] = (float*)(zbuf + width * 4 * j);
 	}
-	device->texture[0] = (IUINT32*)ptr;
-	device->texture[1] = (IUINT32*)(ptr + 16);
+	device->texture[0] = (uint32_t*)ptr;
+	device->texture[1] = (uint32_t*)(ptr + 16);
 	memset(device->texture[0], 0, 64);
 	device->tex_width = 2;
 	device->tex_height = 2;
@@ -515,7 +411,7 @@ void device_init(device_t *device, int width, int height, void *fb) {
 
 // 删除设备
 void device_destroy(device_t *device) {
-	if (device->framebuffer) 
+	if (device->framebuffer)
 		free(device->framebuffer);
 	device->framebuffer = NULL;
 	device->zbuffer = NULL;
@@ -528,7 +424,7 @@ void device_set_texture(device_t *device, void *bits, long pitch, int w, int h) 
 	int j;
 	assert(w <= 1024 && h <= 1024);
 	for (j = 0; j < h; ptr += pitch, j++) 	// 重新计算每行纹理的指针
-		device->texture[j] = (IUINT32*)ptr;
+		device->texture[j] = (uint32_t*)ptr;
 	device->tex_width = w;
 	device->tex_height = h;
 	device->max_u = (float)(w - 1);
@@ -539,8 +435,8 @@ void device_set_texture(device_t *device, void *bits, long pitch, int w, int h) 
 void device_clear(device_t *device, int mode) {
 	int y, x, height = device->height;
 	for (y = 0; y < device->height; y++) {
-		IUINT32 *dst = device->framebuffer[y];
-		IUINT32 cc = (height - 1 - y) * 230 / (height - 1);
+		uint32_t*dst = device->framebuffer[y];
+		uint32_t cc = (height - 1 - y) * 230 / (height - 1);
 		cc = (cc << 16) | (cc << 8) | cc;
 		if (mode == 0) cc = device->background;
 		for (x = device->width; x > 0; dst++, x--) dst[0] = cc;
@@ -551,15 +447,8 @@ void device_clear(device_t *device, int mode) {
 	}
 }
 
-// 画点
-void device_pixel(device_t *device, int x, int y, IUINT32 color) {
-	if (((IUINT32)x) < (IUINT32)device->width && ((IUINT32)y) < (IUINT32)device->height) {
-		device->framebuffer[y][x] = color;
-	}
-}
-
 // 绘制线段
-void device_draw_line(device_t *device, int x1, int y1, int x2, int y2, IUINT32 c) {
+void device_draw_line(device_t *device, int x1, int y1, int x2, int y2, uint32_t c) {
 	int x, y, rem = 0;
 	if (x1 == x2 && y1 == y2) {
 		device_pixel(device, x1, y1, c);
@@ -603,7 +492,7 @@ void device_draw_line(device_t *device, int x1, int y1, int x2, int y2, IUINT32 
 }
 
 // 根据坐标读取纹理
-IUINT32 device_texture_read(const device_t *device, float u, float v) {
+uint32_t device_texture_read(const device_t *device, float u, float v) {
 	int x, y;
 	u = u * device->max_u;
 	v = v * device->max_v;
@@ -621,7 +510,7 @@ IUINT32 device_texture_read(const device_t *device, float u, float v) {
 
 // 绘制扫描线
 void device_draw_scanline(device_t *device, scanline_t *scanline) {
-	IUINT32 *framebuffer = device->framebuffer[scanline->y];
+	uint32_t* framebuffer = device->framebuffer[scanline->y];
 	float *zbuffer = device->zbuffer[scanline->y];
 	int x = scanline->x;
 	int w = scanline->w;
@@ -630,7 +519,7 @@ void device_draw_scanline(device_t *device, scanline_t *scanline) {
 	for (; w > 0; x++, w--) {
 		if (x >= 0 && x < width) {
 			float rhw = scanline->v.rhw;
-			if (rhw >= zbuffer[x]) {	
+			if (rhw >= zbuffer[x]) {
 				float w = 1.0f / rhw;
 				zbuffer[x] = rhw;
 				if (render_state & RENDER_STATE_COLOR) {
@@ -648,7 +537,7 @@ void device_draw_scanline(device_t *device, scanline_t *scanline) {
 				if (render_state & RENDER_STATE_TEXTURE) {
 					float u = scanline->v.tc.u * w;
 					float v = scanline->v.tc.v * w;
-					IUINT32 cc = device_texture_read(device, u, v);
+					uint32_t cc = device_texture_read(device, u, v);
 					framebuffer[x] = cc;
 				}
 			}
@@ -675,7 +564,7 @@ void device_render_trap(device_t *device, trapezoid_t *trap) {
 }
 
 // 根据 render_state 绘制原始三角形
-void device_draw_primitive(device_t *device, const vertex_t *v1, 
+void device_draw_primitive(device_t *device, const vertex_t *v1,
 	const vertex_t *v2, const vertex_t *v3) {
 	point_t p1, p2, p3, c1, c2, c3;
 	int render_state = device->render_state;
@@ -707,17 +596,17 @@ void device_draw_primitive(device_t *device, const vertex_t *v1,
 		trapezoid_t traps[2];
 		int n;
 
-		t1.pos = p1; 
+		t1.pos = p1;
 		t2.pos = p2;
 		t3.pos = p3;
 		t1.pos.w = c1.w;
 		t2.pos.w = c2.w;
 		t3.pos.w = c3.w;
-		
+
 		vertex_rhw_init(&t1);	// 初始化 w
 		vertex_rhw_init(&t2);	// 初始化 w
 		vertex_rhw_init(&t3);	// 初始化 w
-		
+
 		// 拆分三角形为0-2个梯形，并且返回可用梯形数量
 		n = trapezoid_init_triangle(traps, &t1, &t2, &t3);
 
@@ -731,240 +620,3 @@ void device_draw_primitive(device_t *device, const vertex_t *v1,
 		device_draw_line(device, (int)p3.x, (int)p3.y, (int)p2.x, (int)p2.y, device->foreground);
 	}
 }
-
-
-//=====================================================================
-// Win32 窗口及图形绘制：为 device 提供一个 DibSection 的 FB
-//=====================================================================
-int screen_w, screen_h, screen_exit = 0;
-int screen_mx = 0, screen_my = 0, screen_mb = 0;
-int screen_keys[512];	// 当前键盘按下状态
-static HWND screen_handle = NULL;		// 主窗口 HWND
-static HDC screen_dc = NULL;			// 配套的 HDC
-static HBITMAP screen_hb = NULL;		// DIB
-static HBITMAP screen_ob = NULL;		// 老的 BITMAP
-unsigned char *screen_fb = NULL;		// frame buffer
-long screen_pitch = 0;
-
-int screen_init(int w, int h, const TCHAR *title);	// 屏幕初始化
-int screen_close(void);								// 关闭屏幕
-void screen_dispatch(void);							// 处理消息
-void screen_update(void);							// 显示 FrameBuffer
-
-// win32 event handler
-static LRESULT screen_events(HWND, UINT, WPARAM, LPARAM);	
-
-#ifdef _MSC_VER
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "user32.lib")
-#endif
-
-// 初始化窗口并设置标题
-int screen_init(int w, int h, const TCHAR *title) {
-	WNDCLASS wc = { CS_BYTEALIGNCLIENT, (WNDPROC)screen_events, 0, 0, 0, 
-		NULL, NULL, NULL, NULL, _T("SCREEN3.1415926") };
-	BITMAPINFO bi = { { sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB, 
-		w * h * 4, 0, 0, 0, 0 }  };
-	RECT rect = { 0, 0, w, h };
-	int wx, wy, sx, sy;
-	LPVOID ptr;
-	HDC hDC;
-
-	screen_close();
-
-	wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-	wc.hInstance = GetModuleHandle(NULL);
-	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	if (!RegisterClass(&wc)) return -1;
-
-	screen_handle = CreateWindow(_T("SCREEN3.1415926"), title,
-		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-		0, 0, 0, 0, NULL, NULL, wc.hInstance, NULL);
-	if (screen_handle == NULL) return -2;
-
-	screen_exit = 0;
-	hDC = GetDC(screen_handle);
-	screen_dc = CreateCompatibleDC(hDC);
-	ReleaseDC(screen_handle, hDC);
-
-	screen_hb = CreateDIBSection(screen_dc, &bi, DIB_RGB_COLORS, &ptr, 0, 0);
-	if (screen_hb == NULL) return -3;
-
-	screen_ob = (HBITMAP)SelectObject(screen_dc, screen_hb);
-	screen_fb = (unsigned char*)ptr;
-	screen_w = w;
-	screen_h = h;
-	screen_pitch = w * 4;
-	
-	AdjustWindowRect(&rect, GetWindowLong(screen_handle, GWL_STYLE), 0);
-	wx = rect.right - rect.left;
-	wy = rect.bottom - rect.top;
-	sx = (GetSystemMetrics(SM_CXSCREEN) - wx) / 2;
-	sy = (GetSystemMetrics(SM_CYSCREEN) - wy) / 2;
-	if (sy < 0) sy = 0;
-	SetWindowPos(screen_handle, NULL, sx, sy, wx, wy, (SWP_NOCOPYBITS | SWP_NOZORDER | SWP_SHOWWINDOW));
-	SetForegroundWindow(screen_handle);
-
-	ShowWindow(screen_handle, SW_NORMAL);
-	screen_dispatch();
-
-	memset(screen_keys, 0, sizeof(int) * 512);
-	memset(screen_fb, 0, w * h * 4);
-
-	return 0;
-}
-
-int screen_close(void) {
-	if (screen_dc) {
-		if (screen_ob) { 
-			SelectObject(screen_dc, screen_ob); 
-			screen_ob = NULL; 
-		}
-		DeleteDC(screen_dc);
-		screen_dc = NULL;
-	}
-	if (screen_hb) { 
-		DeleteObject(screen_hb); 
-		screen_hb = NULL; 
-	}
-	if (screen_handle) { 
-		CloseWindow(screen_handle); 
-		screen_handle = NULL; 
-	}
-	return 0;
-}
-
-static LRESULT screen_events(HWND hWnd, UINT msg, 
-	WPARAM wParam, LPARAM lParam) {
-	switch (msg) {
-	case WM_CLOSE: screen_exit = 1; break;
-	case WM_KEYDOWN: screen_keys[wParam & 511] = 1; break;
-	case WM_KEYUP: screen_keys[wParam & 511] = 0; break;
-	default: return DefWindowProc(hWnd, msg, wParam, lParam);
-	}
-	return 0;
-}
-
-void screen_dispatch(void) {
-	MSG msg;
-	while (1) {
-		if (!PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) break;
-		if (!GetMessage(&msg, NULL, 0, 0)) break;
-		DispatchMessage(&msg);
-	}
-}
-
-void screen_update(void) {
-	HDC hDC = GetDC(screen_handle);
-	BitBlt(hDC, 0, 0, screen_w, screen_h, screen_dc, 0, 0, SRCCOPY);
-	ReleaseDC(screen_handle, hDC);
-	screen_dispatch();
-}
-
-
-//=====================================================================
-// 主程序
-//=====================================================================
-vertex_t mesh[8] = {
-	{ { -1, -1,  1, 1 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f }, 1 },
-	{ {  1, -1,  1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f }, 1 },
-	{ {  1,  1,  1, 1 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f }, 1 },
-	{ { -1,  1,  1, 1 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f }, 1 },
-	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f }, 1 },
-	{ {  1, -1, -1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f }, 1 },
-	{ {  1,  1, -1, 1 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f }, 1 },
-	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f }, 1 },
-};
-
-void draw_plane(device_t *device, int a, int b, int c, int d) {
-	vertex_t p1 = mesh[a], p2 = mesh[b], p3 = mesh[c], p4 = mesh[d];
-	p1.tc.u = 0, p1.tc.v = 0, p2.tc.u = 0, p2.tc.v = 1;
-	p3.tc.u = 1, p3.tc.v = 1, p4.tc.u = 1, p4.tc.v = 0;
-	device_draw_primitive(device, &p1, &p2, &p3);
-	device_draw_primitive(device, &p3, &p4, &p1);
-}
-
-void draw_box(device_t *device, float theta) {
-	matrix_t m;
-	matrix_set_rotate(&m, -1, -0.5, 1, theta);
-	device->transform.world = m;
-	transform_update(&device->transform);
-	draw_plane(device, 0, 1, 2, 3);
-	draw_plane(device, 7, 6, 5, 4);
-	draw_plane(device, 0, 4, 5, 1);
-	draw_plane(device, 1, 5, 6, 2);
-	draw_plane(device, 2, 6, 7, 3);
-	draw_plane(device, 3, 7, 4, 0);
-}
-
-void camera_at_zero(device_t *device, float x, float y, float z) {
-	point_t eye = { x, y, z, 1 }, at = { 0, 0, 0, 1 }, up = { 0, 0, 1, 1 };
-	matrix_set_lookat(&device->transform.view, &eye, &at, &up);
-	transform_update(&device->transform);
-}
-
-void init_texture(device_t *device) {
-	static IUINT32 texture[256][256];
-	int i, j;
-	for (j = 0; j < 256; j++) {
-		for (i = 0; i < 256; i++) {
-			int x = i / 32, y = j / 32;
-			texture[j][i] = ((x + y) & 1)? 0xffffff : 0x3fbcef;
-		}
-	}
-	device_set_texture(device, texture, 256 * 4, 256, 256);
-}
-
-int main(void)
-{
-	device_t device;
-	int states[] = {
-		RENDER_STATE_TEXTURE | RENDER_STATE_CCW_CULLING,
-		RENDER_STATE_COLOR | RENDER_STATE_CCW_CULLING,
-		RENDER_STATE_WIREFRAME | RENDER_STATE_CCW_CULLING,
-		RENDER_STATE_WIREFRAME,
-	};
-	int indicator = 0;
-	int kbhit = 0;
-	float alpha = 1;
-	float pos = 3.5;
-
-	TCHAR *title = _T("Mini3d (software render tutorial) - ")
-		_T("Left/Right: rotation, Up/Down: forward/backward, Space: switch state");
-
-	if (screen_init(800, 600, title)) 
-		return -1;
-
-	device_init(&device, 800, 600, screen_fb);
-	camera_at_zero(&device, 3, 0, 0);
-
-	init_texture(&device);
-	device.render_state = RENDER_STATE_TEXTURE | RENDER_STATE_CCW_CULLING;
-
-	while (screen_exit == 0 && screen_keys[VK_ESCAPE] == 0) {
-		screen_dispatch();
-		device_clear(&device, 1);
-		camera_at_zero(&device, pos, 0, 0);
-		
-		if (screen_keys[VK_UP]) pos -= 0.01f;
-		if (screen_keys[VK_DOWN]) pos += 0.01f;
-		if (screen_keys[VK_LEFT]) alpha += 0.01f;
-		if (screen_keys[VK_RIGHT]) alpha -= 0.01f;
-
-		if (screen_keys[VK_SPACE]) {
-			if (kbhit == 0) {
-				kbhit = 1;
-				if (++indicator >= 4) indicator = 0;
-				device.render_state = states[indicator];
-			}
-		}	else {
-			kbhit = 0;
-		}
-
-		draw_box(&device, alpha);
-		screen_update();
-		Sleep(1);
-	}
-	return 0;
-}
-

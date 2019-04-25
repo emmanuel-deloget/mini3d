@@ -75,6 +75,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="mini3d.c" />
+    <ClCompile Include="window-main.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="mini3d.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
